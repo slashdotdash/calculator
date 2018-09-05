@@ -15,7 +15,7 @@ defmodule Hooks do
     end
   end
 
-  def on_definition(env, _kind, :execute, [_op, _n, _acc] = args, guards, _body) do
+  def on_definition(env, _kind, :execute, args, guards, _body) do
     Module.put_attribute(env.module, :executes, {args, guards})
   end
 
@@ -26,20 +26,34 @@ defmodule Hooks do
     executes = Module.get_attribute(env.module, :executes)
 
     supported_ops =
-      Enum.map(executes, fn {[op, n, acc], guards} ->
-        quote do
-          defp supported?(unquote(op), _n, _acc) do
+      Enum.map(executes, fn {args, guards} ->
+        guard = combine_guards(guards)
+
+        quote generated: true do
+          defp supported?(unquote_splicing(args)) when unquote(guard) do
             true
           end
         end
       end)
 
-    quote do
+    quote generated: true do
       unquote(supported_ops)
 
-      defp supported?(op, n, _initial) do
+      # Operations are not supported by default.
+      defp supported?(_op, _n, _initial) do
         false
       end
     end
+  end
+
+  # Combine list of guard clauses to single guard using `or`.
+  defp combine_guards(guards)
+
+  defp combine_guards([]), do: nil
+
+  defp combine_guards(guards) do
+    Enum.reduce(guards, fn guard, acc ->
+      quote do: unquote(acc) or unquote(guard)
+    end)
   end
 end
